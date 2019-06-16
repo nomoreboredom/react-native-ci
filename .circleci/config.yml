@@ -1,0 +1,68 @@
+version: 2.1
+
+executors:
+  android-executor:
+    docker:
+      - image: nomoreboredom/react-native-ci-primary:0.0.3 # the primary container, where your job's commands are run
+    # working_directory: /tmp
+
+jobs:
+  build:
+    executor: android-executor
+    steps:
+      - checkout # check out the code in the project directory
+      - run: echo "hello world" # run the `echo` command
+      - run: npm install # run the `echo` command
+      - save_cache: # special step to save the dependency cache
+          key: dependency-cache-{{ checksum "package.json" }}
+          paths:
+            - ./node_modules
+  test:
+    executor: android-executor
+    steps:
+      - checkout # check out the code in the project directory
+      - restore_cache: # special step to restore the dependency cache
+          # Read about caching dependencies: https://circleci.com/docs/2.0/caching/
+          key: dependency-cache-{{ checksum "package.json" }}
+      - run: npm run test
+  compile:
+    executor: android-executor
+    steps:
+      - checkout # check out the code in the project directory
+      - restore_cache: # special step to restore the dependency cache
+          # Read about caching dependencies: https://circleci.com/docs/2.0/caching/
+          key: dependency-cache-{{ checksum "package.json" }}
+      - run: mkdir -p android/app/src/main/assets
+      - run: cd android && ./gradlew clean
+      - run: echo $KEYSTORE | base64 -di | tee rnci-upload-key.keystore android/app/rnci-upload-key.keystore >/dev/null
+      - run: cd android && ./gradlew bundleRelease --stacktrace
+  deploy:
+    executor: android-executor
+    steps:
+      - checkout # check out the code in the project directory
+      - run: echo "DEPLOY NOW"
+workflows:
+  main:
+    jobs:
+      - build:
+          filters:
+            branches:
+              only: master
+      - test:
+          filters:
+            branches:
+              only: master
+          requires:
+            - build
+      - compile:
+          filters:
+            branches:
+              only: master
+          requires:
+            - test
+      - deploy:
+          filters:
+            branches:
+              only: master
+          requires:
+            - compile
